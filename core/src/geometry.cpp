@@ -125,9 +125,13 @@ double VertexPositionGeometry::barycentricDualArea(Vertex v) const {
  * Returns: The angle clamped between 0 and π.
  */
 double VertexPositionGeometry::angle(Corner c) const {
-
-    // TODO
-    return 0; // placeholder
+    Halfedge he = c.halfedge();
+    Vector3 pA = inputVertexPositions[he.vertex()];
+    he = he.next();
+    Vector3 pB = inputVertexPositions[he.vertex()];
+    he = he.next();
+    Vector3 pC = inputVertexPositions[he.vertex()];
+    return std::acos(dot((pB - pA).normalize(), (pC - pA).normalize()));
 }
 
 /*
@@ -137,9 +141,16 @@ double VertexPositionGeometry::angle(Corner c) const {
  * Returns: The dihedral angle.
  */
 double VertexPositionGeometry::dihedralAngle(Halfedge he) const {
+    Vector3 pI = inputVertexPositions[he.vertex()];
+    Vector3 pJ = inputVertexPositions[he.twin().vertex()];
+    Vector3 pK = inputVertexPositions[he.next().next().vertex()];
+    Vector3 pL = inputVertexPositions[he.twin().next().next().vertex()];
 
-    // TODO
-    return 0; // placeholder
+    Vector3 eIJ = pJ - pI;
+    Vector3 nIJK = cross(pJ - pI, pK - pI).normalize();
+    Vector3 nIJL = cross(pL - pI, pJ - pI).normalize();
+
+    return std::atan2(dot(eIJ.normalize(), cross(nIJK, nIJL)), dot(nIJK, nIJL));
 }
 
 /*
@@ -149,9 +160,19 @@ double VertexPositionGeometry::dihedralAngle(Halfedge he) const {
  * Returns: The "equally weighted" normal vector.
  */
 Vector3 VertexPositionGeometry::vertexNormalEquallyWeighted(Vertex v) const {
+    Vector3 normal = {0., 0., 0.};
 
-    // TODO
-    return {0, 0, 0}; // placeholder
+    for (Face f : v.adjacentFaces()) {
+        Halfedge he = f.halfedge();
+        Vector3 pA = inputVertexPositions[he.vertex()];
+        he = he.next();
+        Vector3 pB = inputVertexPositions[he.vertex()];
+        he = he.next();
+        Vector3 pC = inputVertexPositions[he.vertex()];
+        normal += cross(pB - pA, pC - pA).normalize();
+    }
+
+    return normal.normalize();
 }
 
 /*
@@ -161,9 +182,20 @@ Vector3 VertexPositionGeometry::vertexNormalEquallyWeighted(Vertex v) const {
  * Returns: The "tip angle weights" normal vector.
  */
 Vector3 VertexPositionGeometry::vertexNormalAngleWeighted(Vertex v) const {
+    Vector3 normal = {0., 0., 0.};
 
-    // TODO
-    return {0, 0, 0}; // placeholder
+    for (Halfedge he : v.outgoingHalfedges()) {
+        Corner corner = he.corner();
+        Vector3 pA = inputVertexPositions[he.vertex()];
+        he = he.next();
+        Vector3 pB = inputVertexPositions[he.vertex()];
+        he = he.next();
+        Vector3 pC = inputVertexPositions[he.vertex()];
+        Vector3 n = cross(pB - pA, pC - pA).normalize();
+        normal += angle(corner) * n;
+    }
+
+    return normal.normalize();
 }
 
 /*
@@ -173,9 +205,19 @@ Vector3 VertexPositionGeometry::vertexNormalAngleWeighted(Vertex v) const {
  * Returns: The "inscribed sphere" normal vector.
  */
 Vector3 VertexPositionGeometry::vertexNormalSphereInscribed(Vertex v) const {
+    Vector3 normal = {0., 0., 0.};
 
-    // TODO
-    return {0, 0, 0}; // placeholder
+    for (Halfedge he : v.outgoingHalfedges()) {
+        Vector3 pA = inputVertexPositions[he.vertex()];
+        he = he.next();
+        Vector3 pB = inputVertexPositions[he.vertex()];
+        he = he.next();
+        Vector3 pC = inputVertexPositions[he.vertex()];
+        Vector3 n = cross(pB - pA, pC - pA);
+        normal += n / norm2(pB - pA) / norm2(pC - pA);
+    }
+
+    return normal.normalize();
 }
 
 /*
@@ -185,9 +227,19 @@ Vector3 VertexPositionGeometry::vertexNormalSphereInscribed(Vertex v) const {
  * Returns: The "face area weighted" normal vector.
  */
 Vector3 VertexPositionGeometry::vertexNormalAreaWeighted(Vertex v) const {
+    Vector3 normal = {0., 0., 0.};
 
-    // TODO
-    return {0, 0, 0}; // placeholder
+    for (Halfedge he : v.outgoingHalfedges()) {
+        Vector3 pA = inputVertexPositions[he.vertex()];
+        he = he.next();
+        Vector3 pB = inputVertexPositions[he.vertex()];
+        he = he.next();
+        Vector3 pC = inputVertexPositions[he.vertex()];
+        Vector3 n = cross(pB - pA, pC - pA);
+        normal += norm(n) * n.normalize();
+    }
+
+    return normal.normalize();
 }
 
 /*
@@ -197,9 +249,17 @@ Vector3 VertexPositionGeometry::vertexNormalAreaWeighted(Vertex v) const {
  * Returns: The "Gauss curvature" normal vector.
  */
 Vector3 VertexPositionGeometry::vertexNormalGaussianCurvature(Vertex v) const {
+    Vector3 normal = {0., 0., 0.};
 
-    // TODO
-    return {0, 0, 0}; // placeholder
+    for (Halfedge he : v.outgoingHalfedges()) {
+        Vector3 pI = inputVertexPositions[he.vertex()];
+        Vector3 pJ = inputVertexPositions[he.next().vertex()];
+        Vector3 eIJ = pJ - pI;
+        double psiIJ = dihedralAngle(he);
+        normal += psiIJ / norm(eIJ) * eIJ;
+    }
+
+    return normal.normalize();
 }
 
 /*
@@ -209,9 +269,18 @@ Vector3 VertexPositionGeometry::vertexNormalGaussianCurvature(Vertex v) const {
  * Returns: The "mean curvature" normal vector.
  */
 Vector3 VertexPositionGeometry::vertexNormalMeanCurvature(Vertex v) const {
+    Vector3 normal = {0., 0., 0.};
 
-    // TODO
-    return {0, 0, 0}; // placeholder
+    for (Halfedge he : v.outgoingHalfedges()) {
+        Vector3 pI = inputVertexPositions[he.vertex()];
+        Vector3 pJ = inputVertexPositions[he.next().vertex()];
+        Vector3 eIJ = pJ - pI;
+        double cotanA = cotan(he);
+        double cotanB = cotan(he.twin());
+        normal += (cotanA + cotanB) * eIJ;
+    }
+
+    return normal.normalize();
 }
 
 /*
@@ -221,9 +290,13 @@ Vector3 VertexPositionGeometry::vertexNormalMeanCurvature(Vertex v) const {
  * Returns: The angle defect of the given vertex.
  */
 double VertexPositionGeometry::angleDefect(Vertex v) const {
+    double K = 2. * PI;
 
-    // TODO
-    return 0; // placeholder
+    for (Halfedge he : v.outgoingHalfedges()) {
+        K -= angle(he.corner());
+    }
+
+    return K;
 }
 
 /*
@@ -233,9 +306,13 @@ double VertexPositionGeometry::angleDefect(Vertex v) const {
  * Returns: The total angle defect
  */
 double VertexPositionGeometry::totalAngleDefect() const {
+    double K = 0.;
 
-    // TODO
-    return 0; // placeholder
+    for (Vertex v : mesh.vertices()) {
+        K += angleDefect(v);
+    }
+
+    return K;
 }
 
 /*
@@ -245,9 +322,16 @@ double VertexPositionGeometry::totalAngleDefect() const {
  * Returns: The mean curvature at the given vertex.
  */
 double VertexPositionGeometry::scalarMeanCurvature(Vertex v) const {
+    double H = 0.;
 
-    // TODO
-    return 0; // placeholder
+    for (Halfedge he : v.outgoingHalfedges()) {
+        Vector3 pI = inputVertexPositions[he.vertex()];
+        Vector3 pJ = inputVertexPositions[he.next().vertex()];
+        Vector3 eIJ = pJ - pI;
+        H += dihedralAngle(he) * norm(eIJ) / 2.;
+    }
+
+    return H;
 }
 
 /*
@@ -257,9 +341,21 @@ double VertexPositionGeometry::scalarMeanCurvature(Vertex v) const {
  * Returns: The circumcentric dual area of the given vertex.
  */
 double VertexPositionGeometry::circumcentricDualArea(Vertex v) const {
+    double A = 0.;
 
-    // TODO
-    return 0; // placeholder
+    for (Halfedge he : v.outgoingHalfedges()) {
+        Vector3 pI = inputVertexPositions[he.vertex()];
+        Vector3 pJ = inputVertexPositions[he.next().vertex()];
+        A += norm2(pJ - pI) * cotan(he);
+    }
+
+    for (Halfedge he : v.incomingHalfedges()) {
+        Vector3 pI = inputVertexPositions[he.vertex()];
+        Vector3 pJ = inputVertexPositions[he.next().vertex()];
+        A += norm2(pJ - pI) * cotan(he);
+    }
+
+    return A / 8.;
 }
 
 /*
@@ -269,9 +365,14 @@ double VertexPositionGeometry::circumcentricDualArea(Vertex v) const {
  * Returns: A std::pair containing the minimum and maximum principal curvature values at a vertex.
  */
 std::pair<double, double> VertexPositionGeometry::principalCurvatures(Vertex v) const {
+    double dualArea = circumcentricDualArea(v);
+    double h = scalarMeanCurvature(v) / dualArea;
+    double k = angleDefect(v) / dualArea;
 
-    // TODO
-    return std::make_pair(0, 0); // placeholder
+    double k1 = h - std::sqrt(h * h - k);
+    double k2 = h + std::sqrt(h * h - k);
+
+    return std::make_pair(k1, k2);
 }
 
 
