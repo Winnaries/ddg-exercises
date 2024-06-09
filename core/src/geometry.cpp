@@ -384,9 +384,26 @@ std::pair<double, double> VertexPositionGeometry::principalCurvatures(Vertex v) 
  * Returns: Sparse positive definite Laplace matrix for the mesh.
  */
 SparseMatrix<double> VertexPositionGeometry::laplaceMatrix() const {
+    typedef Eigen::Triplet<double> T;
+    std::vector<T> tripletList;
+    tripletList.reserve(mesh.nVertices() * 12);
 
-    // TODO
-    return identityMatrix<double>(1); // placeholder
+    for (Vertex v : mesh.vertices()) {
+        double cotanSum = 0.0;
+        for (Halfedge he : v.outgoingHalfedges()) {
+            size_t vI = he.vertex().getIndex();
+            size_t vJ = he.twin().vertex().getIndex();
+            double cotanA = cotan(he);
+            double cotanB = cotan(he.twin());
+            tripletList.push_back(T(vI, vJ, -(cotanA + cotanB)));
+            cotanSum += cotanA + cotanB;
+        }
+        tripletList.push_back(T(v.getIndex(), v.getIndex(), cotanSum));
+    }
+
+    SparseMatrix<double> mat(mesh.nVertices(), mesh.nVertices());
+    mat.setFromTriplets(tripletList.begin(), tripletList.end());
+    return 1e-8 * identityMatrix<double>(mesh.nVertices()) + .5 * mat;
 }
 
 /*
@@ -396,9 +413,17 @@ SparseMatrix<double> VertexPositionGeometry::laplaceMatrix() const {
  * Returns: Sparse mass matrix for the mesh.
  */
 SparseMatrix<double> VertexPositionGeometry::massMatrix() const {
+    typedef Eigen::Triplet<double> T;
+    std::vector<T> tripletList;
+    tripletList.reserve(mesh.nVertices());
 
-    // TODO
-    return identityMatrix<double>(1); // placeholder
+    for (Vertex v : mesh.vertices()) {
+        tripletList.push_back(T(v.getIndex(), v.getIndex(), barycentricDualArea(v)));
+    }
+
+    SparseMatrix<double> mat(mesh.nVertices(), mesh.nVertices());
+    mat.setFromTriplets(tripletList.begin(), tripletList.end());
+    return mat;
 }
 
 /*
