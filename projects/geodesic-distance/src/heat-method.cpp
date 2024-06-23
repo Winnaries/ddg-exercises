@@ -1,5 +1,6 @@
 // Implement member functions HeatMethod class.
 #include "heat-method.h"
+#include "geometrycentral/numerical/linear_solvers.h"
 
 using namespace geometrycentral;
 using namespace geometrycentral::surface;
@@ -12,10 +13,9 @@ HeatMethod::HeatMethod(ManifoldSurfaceMesh* surfaceMesh, VertexPositionGeometry*
     this->mesh = surfaceMesh;
     this->geometry = geo;
 
-    // TODO: Build Laplace and flow matrices.
-    // Note: core/geometry.cpp has meanEdgeLength() function
-    this->A = identityMatrix<double>(1); // placeholder
-    this->F = identityMatrix<double>(1); // placeholder
+    double t = geo->meanEdgeLength() * geo->meanEdgeLength();
+    this->A = geo->laplaceMatrix(); 
+    this->F = geo->massMatrix() + (SparseMatrix<double>)(t * this->A); 
 }
 
 /*
@@ -26,9 +26,23 @@ HeatMethod::HeatMethod(ManifoldSurfaceMesh* surfaceMesh, VertexPositionGeometry*
  * Returns: A MeshData container that stores a Vector3 per face.
  */
 FaceData<Vector3> HeatMethod::computeVectorField(const Vector<double>& u) const {
+    FaceData<Vector3> faceData(*mesh);
 
-    // TODO
-    return FaceData<Vector3>(*mesh, {0, 0, 0}); // placeholder
+    for (Face f : mesh->faces()) {
+        Vector3 faceGradient = Vector3::constant(0.0); 
+        Vector3 faceNormal = geometry->faceNormal(f); 
+        double faceArea = geometry->faceArea(f);
+
+        for (Halfedge he : f.adjacentHalfedges()) {
+            Vertex v = he.next().next().vertex(); 
+            Vector3 edgeVector = geometry->halfedgeVector(he); 
+            faceGradient += u[v.getIndex()] * edgeVector; 
+        }
+
+        faceData[f] = -(cross(faceNormal, faceGradient) / faceArea / 2.).normalize();
+    }
+
+    return faceData; 
 }
 
 /*
@@ -38,9 +52,21 @@ FaceData<Vector3> HeatMethod::computeVectorField(const Vector<double>& u) const 
  * Returns: A dense vector
  */
 Vector<double> HeatMethod::computeDivergence(const FaceData<Vector3>& X) const {
+    Vector<double> gradX = Vector<double>::Zero(mesh->nVertices());
 
-    // TODO
-    return Vector<double>::Zero(1); // placeholder
+    for (Vertex v : mesh->vertices()) {
+        for (Halfedge heA : v.outgoingHalfedges()) {
+            Face face = heA.face(); 
+            Halfedge heB = heA.next().next(); 
+            Vector3 eA = geometry->halfedgeVector(heA);
+            Vector3 eB = geometry->halfedgeVector(heB.twin());
+            Vector3 fGrad = X[face]; 
+            gradX[v.getIndex()] += .5 * geometry->cotan(heA) * dot(fGrad, eA);
+            gradX[v.getIndex()] += .5 * geometry->cotan(heB) * dot(fGrad, eB); 
+        }
+    }
+
+    return gradX; 
 }
 
 /*
@@ -50,9 +76,11 @@ Vector<double> HeatMethod::computeDivergence(const FaceData<Vector3>& X) const {
  * geodesic distances per vertex.
  */
 Vector<double> HeatMethod::compute(const Vector<double>& delta) const {
-
-    // TODO
-    Vector<double> phi = Vector<double>::Zero(delta.rows());
+    SparseMatrix<double> F = this->F; 
+    SparseMatrix<double> A = this->A; 
+    Vector<double> ut = solvePositiveDefinite(F, delta); 
+    Vector<double> div = computeDivergence(computeVectorField(ut)); 
+    Vector<double> phi = -solvePositiveDefinite(A, div);
 
     // Since φ is unique up to an additive constant, it should be shifted such that the smallest distance is zero
     this->subtractMinimumDistance(phi);
